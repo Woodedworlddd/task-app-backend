@@ -208,6 +208,7 @@ app.post('/api/capture', verifyToken, async (req, res) => {
 
     const matchingClient = await findMatchingClient(req.userId, contacts.phones, contacts.emails);
 
+    // NOTE: raw screenshot is intentionally NOT stored (null) to save space & protect privacy
     const commResult = await client.query(
       `INSERT INTO communications 
        (user_id, client_id, type, sender_name, phone, email, subject, content, raw_screenshot, extracted_text)
@@ -222,7 +223,7 @@ app.post('/api/capture', verifyToken, async (req, res) => {
         extractedData.email,
         extractedData.subject,
         extractedData.content,
-        screenshotBase64,
+        null,
         JSON.stringify(extractedData)
       ]
     );
@@ -340,7 +341,6 @@ app.get('/api/clients/:id/communications', verifyToken, async (req, res) => {
   res.json(result.rows);
 });
 
-// All captures for the dashboard, with any linked client name
 app.get('/api/captures', verifyToken, async (req, res) => {
   try {
     const result = await client.query(
@@ -357,7 +357,6 @@ app.get('/api/captures', verifyToken, async (req, res) => {
   }
 });
 
-// Mark a capture as cleared (done)
 app.patch('/api/captures/:id/clear', verifyToken, async (req, res) => {
   try {
     const result = await client.query(
