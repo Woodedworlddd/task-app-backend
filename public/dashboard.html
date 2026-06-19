@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Task Dashboard</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 0; background: #f5f5f7; color: #1d1d1f; }
+  header { background: #fff; padding: 16px 20px; border-bottom: 1px solid #e5e5e7; display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 18px; margin: 0; }
+  #logoutBtn { background: none; border: 1px solid #d2d2d7; border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 20px; }
+
+  /* Login */
+  #loginScreen { max-width: 360px; margin: 80px auto; background: #fff; padding: 28px; border-radius: 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  #loginScreen h1 { font-size: 20px; margin: 0 0 4px; }
+  #loginScreen p { color: #86868b; font-size: 13px; margin: 0 0 20px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  input { width: 100%; padding: 10px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 14px; margin-bottom: 12px; }
+  button.primary { background: #0071e3; color: #fff; border: none; padding: 10px 16px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; width: 100%; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tab { padding: 8px 14px; border-radius: 8px; border: 1px solid #d2d2d7; background: #fff; font-size: 13px; cursor: pointer; }
+  .tab.active { background: #0071e3; color: #fff; border-color: #0071e3; }
+
+  /* Cards */
+  .card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+  .card.cleared { opacity: 0.55; }
+  .row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .client { font-weight: 600; font-size: 15px; }
+  .meta { color: #86868b; font-size: 12px; margin-top: 2px; }
+  .content { margin-top: 10px; font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; }
+  .doneBtn { background: #34c759; color: #fff; border: none; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .clearedTag { font-size: 12px; color: #34c759; font-weight: 600; }
+  .empty { text-align: center; color: #86868b; padding: 48px 0; }
+  .status { font-size: 13px; padding: 10px; border-radius: 8px; margin-bottom: 12px; }
+  .status.error { background: #ffebee; color: #b71c1c; }
+</style>
+</head>
+<body>
+
+  <!-- LOGIN -->
+  <div id="loginScreen">
+    <h1>Task Dashboard</h1>
+    <p>Sign in to view your captures</p>
+    <label>Email</label>
+    <input type="email" id="email" placeholder="you@email.com">
+    <label>Password</label>
+    <input type="password" id="password" placeholder="••••••••">
+    <div id="loginStatus"></div>
+    <button class="primary" id="loginBtn">Sign In</button>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dashScreen" style="display:none;">
+    <header>
+      <h1>Task Dashboard</h1>
+      <button id="logoutBtn">Sign out</button>
+    </header>
+    <div class="wrap">
+      <div class="tabs">
+        <div class="tab active" data-filter="open">To Do</div>
+        <div class="tab" data-filter="cleared">Cleared</div>
+        <div class="tab" data-filter="all">All</div>
+      </div>
+      <div id="list"></div>
+    </div>
+  </div>
+
+<script>
+  const API = ''; // same server
+  let token = '';
+  let captures = [];
+  let filter = 'open';
+
+  const $ = (id) => document.getElementById(id);
+
+  $('loginBtn').addEventListener('click', login);
+  $('logoutBtn').addEventListener('click', () => { token=''; show('login'); });
+  document.querySelectorAll('.tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      filter = t.dataset.filter;
+      render();
+    });
+  });
+
+  function show(which) {
+    $('loginScreen').style.display = which === 'login' ? 'block' : 'none';
+    $('dashScreen').style.display = which === 'dash' ? 'block' : 'none';
+  }
+
+  async function login() {
+    const email = $('email').value;
+    const password = $('password').value;
+    $('loginStatus').innerHTML = '';
+    try {
+      const r = await fetch(API + '/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await r.json();
+      if (data.error) { $('loginStatus').innerHTML = '<div class="status error">'+data.error+'</div>'; return; }
+      token = data.token;
+      show('dash');
+      load();
+    } catch (e) {
+      $('loginStatus').innerHTML = '<div class="status error">'+e.message+'</div>';
+    }
+  }
+
+  async function load() {
+    try {
+      const r = await fetch(API + '/api/captures', { headers: { Authorization: 'Bearer ' + token } });
+      captures = await r.json();
+      render();
+    } catch (e) {
+      $('list').innerHTML = '<div class="empty">Could not load: '+e.message+'</div>';
+    }
+  }
+
+  function render() {
+    let items = captures;
+    if (filter === 'open') items = captures.filter(c => !c.cleared);
+    if (filter === 'cleared') items = captures.filter(c => c.cleared);
+
+    if (!items.length) { $('list').innerHTML = '<div class="empty">Nothing here yet.</div>'; return; }
+
+    $('list').innerHTML = items.map(c => {
+      const who = c.client_name || c.sender_name || c.phone || c.email || 'Unknown';
+      const when = new Date(c.created_at).toLocaleString();
+      const sub = c.subject ? c.subject : (c.type === 'text' ? 'Captured text' : 'Capture');
+      const body = (c.content || '').slice(0, 600);
+      return `
+        <div class="card ${c.cleared ? 'cleared' : ''}">
+          <div class="row">
+            <div>
+              <div class="client">${escapeHtml(who)}</div>
+              <div class="meta">${escapeHtml(sub)} · ${when} · <span class="badge">${c.type || 'capture'}</span></div>
+            </div>
+            ${c.cleared
+              ? '<span class="clearedTag">✓ Cleared</span>'
+              : `<button class="doneBtn" onclick="clearOne(${c.id})">Done</button>`}
+          </div>
+          ${body ? `<div class="content">${escapeHtml(body)}</div>` : ''}
+        </div>`;
+    }).join('');
+  }
+
+  async function clearOne(id) {
+    try {
+      await fetch(API + '/api/captures/' + id + '/clear', {
+        method: 'PATCH',
+        headers: { Authorization: 'Bearer ' + token }
+      });
+      const item = captures.find(c => c.id === id);
+      if (item) item.cleared = true;
+      render();
+    } catch (e) {
+      alert('Could not clear: ' + e.message);
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+</script>
+</body>
+</html>
