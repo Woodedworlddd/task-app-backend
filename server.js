@@ -177,6 +177,7 @@ function verifyToken(req, res, next) {
 
 app.post('/api/capture', verifyToken, async (req, res) => {
   try {
+    console.log('>>> CAPTURE REQUEST RECEIVED. Mode:', req.body.mode);
     const { screenshotBase64, mode } = req.body; // mode: 'auto', 'review', 'match'
     
     // Parse screenshot with Claude
@@ -204,12 +205,20 @@ app.post('/api/capture', verifyToken, async (req, res) => {
       ]
     });
     
-    // Parse Claude's response
+    // Parse Claude's response (tolerant of code fences / preamble)
     let extractedData;
     try {
-      const responseText = message.content[0].text;
+      let responseText = message.content[0].text || '';
+      console.log('Claude raw reply:', responseText);
+      // Pull out the JSON object even if it's wrapped in ```json ... ``` or has extra text
+      const firstBrace = responseText.indexOf('{');
+      const lastBrace = responseText.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace !== -1) {
+        responseText = responseText.slice(firstBrace, lastBrace + 1);
+      }
       extractedData = JSON.parse(responseText);
-    } catch {
+    } catch (parseErr) {
+      console.error('Could not parse Claude response. Raw text was:', message.content?.[0]?.text);
       extractedData = { senderName: '', phone: '', email: '', subject: '', content: '' };
     }
     
